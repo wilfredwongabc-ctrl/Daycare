@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111516" />
+    <title>啟德4A2｜360°互動現場導覽</title>
+    <style>
+      :root {
+        --ink: #15191b;
+        --paper: #f0ede5;
+        --accent: #ff6b55;
+        --panel: rgba(18, 22, 23, 0.96);
+        --line: rgba(255, 255, 255, 0.15);
+        font-family: Arial, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+        color: #fff;
+        background: #111516;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      button { color: inherit; font: inherit; }
+      button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+      .app {
+        position: relative;
+        width: 100vw;
+        height: 100svh;
+        min-height: 540px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 40%, #293031 0, #171b1c 62%, #101314 100%);
+      }
+
+      .topbar {
+        position: absolute;
+        z-index: 30;
+        inset: 0 0 auto;
+        height: 82px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 26px;
+        background: linear-gradient(to bottom, rgba(8, 10, 11, .95), transparent);
+        pointer-events: none;
+      }
+
+      .brand, .actions, .mode-switch { display: flex; align-items: center; pointer-events: auto; }
+      .brand { gap: 13px; }
+      .brand-mark {
+        width: 45px; height: 45px; display: grid; place-items: center;
+        border: 1px solid rgba(255,255,255,.35); border-radius: 50%;
+        color: var(--accent); background: rgba(16,19,20,.78);
+        font-size: 13px; font-weight: 800;
+      }
+      .brand p { margin: 0 0 4px; color: var(--accent); font-size: 10px; letter-spacing: .16em; }
+      .brand h1 { margin: 0; font-size: 16px; font-weight: 600; }
+
+      .mode-switch {
+        position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+        gap: 4px; padding: 4px; border: 1px solid var(--line);
+        border-radius: 999px; background: rgba(15,18,19,.76);
+        backdrop-filter: blur(14px);
+      }
+      .mode-switch button {
+        height: 34px; padding: 0 14px; border: 0; border-radius: 999px;
+        background: transparent; color: rgba(255,255,255,.55);
+        font-size: 11px; cursor: pointer;
+      }
+      .mode-switch button.active { color: var(--ink); background: var(--paper); }
+      .mode-switch b { margin-right: 6px; color: var(--accent); }
+
+      .actions { gap: 8px; }
+      .icon-button {
+        width: 40px; height: 40px; display: grid; place-items: center;
+        border: 1px solid rgba(255,255,255,.18); border-radius: 50%;
+        background: rgba(15,18,19,.72); cursor: pointer; font-size: 18px;
+      }
+
+      .stage { position: absolute; inset: 0; overflow: hidden; }
+      .view { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+      .view.active { opacity: 1; pointer-events: auto; }
+
+      .overview-view { perspective: 1200px; touch-action: none; cursor: grab; }
+      .overview-view.dragging { cursor: grabbing; }
+      .overview-model {
+        --rx: 43deg;
+        --rz: -4deg;
+        --scale: 1;
+        position: absolute;
+        top: 50%; left: 50%;
+        width: min(86vw, 1120px);
+        aspect-ratio: 1599 / 571;
+        transform: translate(-50%, -49%) rotateX(var(--rx)) rotateZ(var(--rz)) scale(var(--scale));
+        transform-style: preserve-3d;
+        filter: drop-shadow(0 50px 55px rgba(0,0,0,.58));
+        transition: transform .08s linear;
+      }
+      .overview-model img { width: 100%; height: 100%; display: block; user-select: none; pointer-events: none; }
+      .room-marker {
+        position: absolute; top: var(--y); left: var(--x);
+        display: flex; align-items: center; gap: 6px;
+        min-height: 28px; transform: translate(-50%,-50%) translateZ(22px);
+        padding: 4px 9px 4px 5px; border: 1px solid var(--color);
+        border-radius: 999px; background: rgba(15,19,20,.94);
+        box-shadow: 0 8px 20px rgba(0,0,0,.42);
+        white-space: nowrap; cursor: pointer;
+      }
+      .room-marker:hover, .room-marker.current {
+        z-index: 2; border-color: #fff;
+        transform: translate(-50%,-50%) translateZ(36px) scale(1.05);
+      }
+      .room-marker span {
+        width: 21px; height: 21px; display: grid; place-items: center;
+        border-radius: 50%; background: var(--color); color: #15191b;
+        font-size: 9px; font-weight: 800;
+      }
+      .room-marker strong { font-size: clamp(8px, .8vw, 11px); font-weight: 600; }
+
+      .compass {
+        position: absolute; z-index: 5; top: 106px; left: 27px;
+        width: 44px; height: 58px; display: grid; place-items: center;
+        border: 1px solid var(--line); border-radius: 22px;
+        background: rgba(15,18,19,.58); font-size: 9px;
+      }
+      .compass b { display: block; color: var(--accent); font-size: 19px; text-align: center; }
+
+      .hint {
+        position: absolute; z-index: 6; top: 100px; left: 50%; transform: translateX(-50%);
+        padding: 8px 13px; border-radius: 999px;
+        background: rgba(15,18,19,.55); color: rgba(255,255,255,.7);
+        font-size: 11px; pointer-events: none; white-space: nowrap;
+      }
+      .hint b { color: var(--accent); margin-right: 7px; }
+
+      .room-view {
+        perspective: 820px;
+        perspective-origin: 50% 48%;
+        background: #202425;
+        touch-action: none;
+        cursor: grab;
+      }
+      .room-view.dragging { cursor: grabbing; }
+      .room-world {
+        --yaw: 0deg;
+        --pitch: 0deg;
+        --zoom: 1;
+        position: absolute; top: 49%; left: 50%;
+        width: 0; height: 0; transform-style: preserve-3d;
+        transform: rotateX(var(--pitch)) rotateY(var(--yaw)) scale3d(var(--zoom),var(--zoom),var(--zoom));
+      }
+      .wall, .floor, .ceiling {
+        position: absolute; backface-visibility: visible;
+        background:
+          linear-gradient(105deg, transparent 0 42%, rgba(255,255,255,.04) 43% 44%, transparent 45%),
+          linear-gradient(#777873, #5f625f);
+      }
+      .wall { width: 1200px; height: 590px; margin: -295px 0 0 -600px; border: 1px solid rgba(0,0,0,.25); }
+      .wall.front { transform: translateZ(-600px); }
+      .wall.back { transform: rotateY(180deg) translateZ(-600px); }
+      .wall.left { transform: rotateY(90deg) translateZ(-600px); }
+      .wall.right { transform: rotateY(-90deg) translateZ(-600px); }
+      .floor, .ceiling { width: 1200px; height: 1200px; margin: -600px 0 0 -600px; }
+      .floor { transform: rotateX(90deg) translateZ(-295px); background: linear-gradient(#555957,#404544); }
+      .ceiling { transform: rotateX(-90deg) translateZ(-295px); background: #555b5a; }
+      .ceiling::before, .ceiling::after {
+        content: ""; position: absolute; left: 12%; right: 12%; height: 18px;
+        background: #899294; box-shadow: 0 0 20px rgba(255,255,255,.13);
+      }
+      .ceiling::before { top: 34%; } .ceiling::after { top: 62%; }
+      .room-sign {
+        position: absolute; top: 110px; left: 50%; width: 390px;
+        transform: translateX(-50%); padding: 18px 22px;
+        border-left: 7px solid var(--accent); background: rgba(234,229,214,.93);
+        color: #202425; box-shadow: 0 14px 35px rgba(0,0,0,.2);
+      }
+      .room-sign b, .room-sign small { display: block; }
+      .room-sign b { font-size: 26px; }
+      .room-sign small { margin-top: 4px; color: #667072; font-size: 12px; text-transform: uppercase; }
+      .door {
+        position: absolute; right: 130px; bottom: 0; width: 155px; height: 285px;
+        border: 14px solid #535b5d; border-bottom: 0; background: #15191a;
+      }
+      .column {
+        position: absolute; z-index: 2; top: 8%; bottom: -3%; left: 21%;
+        width: clamp(52px,5vw,80px); background: linear-gradient(90deg,#454a49,#71736e,#414544);
+        box-shadow: 12px 0 35px rgba(0,0,0,.36); pointer-events: none;
+      }
+      .column.two { right: 20%; left: auto; }
+
+      .portal-row {
+        position: absolute; z-index: 7; right: 0; bottom: 31%; left: 0;
+        display: flex; justify-content: center; gap: 10px; padding: 0 80px;
+        pointer-events: none;
+      }
+      .portal-row button {
+        min-width: 135px; height: 46px; padding: 0 15px;
+        border: 1px solid rgba(255,255,255,.3); border-radius: 999px;
+        background: rgba(17,21,22,.92); font-size: 11px;
+        pointer-events: auto; cursor: pointer;
+      }
+      .portal-row button:hover { border-color: var(--accent); }
+
+      .info-card {
+        position: absolute; z-index: 12; bottom: 27px; left: 26px;
+        width: min(470px, calc(100vw - 52px)); display: flex; gap: 17px;
+        padding: 18px 20px; border: 1px solid rgba(255,255,255,.17);
+        border-radius: 16px; background: rgba(18,22,23,.82);
+        box-shadow: 0 24px 70px rgba(0,0,0,.25); backdrop-filter: blur(18px);
+      }
+      .info-index {
+        width: 44px; height: 44px; flex: 0 0 auto; display: grid; place-items: center;
+        border-radius: 50%; background: var(--accent); color: var(--ink);
+        font-size: 12px; font-weight: 800;
+      }
+      .info-copy p { margin: 0 0 4px; color: rgba(255,255,255,.45); font-size: 9px; letter-spacing: .16em; }
+      .info-copy h2 { margin: 0; font-size: 26px; font-weight: 600; }
+      .info-copy b { display: block; margin-top: 4px; color: var(--accent); font-size: 12px; }
+      .info-copy small { display: block; margin-top: 8px; color: rgba(255,255,255,.6); font-size: 11px; line-height: 1.55; }
+
+      .bottom-actions {
+        position: absolute; z-index: 13; bottom: 28px; left: 50%;
+        display: flex; gap: 8px; transform: translateX(-50%);
+      }
+      .bottom-actions button {
+        height: 41px; padding: 0 14px; border: 1px solid rgba(255,255,255,.2);
+        border-radius: 999px; background: rgba(16,19,20,.78);
+        font-size: 11px; cursor: pointer;
+      }
+
+      .drawer {
+        position: absolute; z-index: 40; top: 0; right: 0;
+        width: min(392px, 100vw); height: 100%; padding: 92px 22px 18px;
+        display: flex; flex-direction: column; background: var(--panel);
+        border-left: 1px solid var(--line); transform: translateX(100%);
+        transition: transform .35s ease; box-shadow: -24px 0 60px rgba(0,0,0,.22);
+      }
+      .drawer.open { transform: translateX(0); }
+      .drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+      .drawer-head p { margin: 0 0 4px; color: var(--accent); font-size: 10px; letter-spacing: .16em; }
+      .drawer-head h2 { margin: 0; font-size: 22px; }
+      .drawer-head button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; background: transparent; cursor: pointer; }
+      .mini-plan { width: 100%; aspect-ratio: 1599/571; object-fit: contain; background: #fff; border-radius: 10px; }
+      .room-list { min-height: 0; margin-top: 14px; overflow: auto; display: grid; gap: 4px; }
+      .room-list button {
+        min-height: 50px; display: grid; grid-template-columns: 31px 1fr 18px;
+        align-items: center; gap: 10px; padding: 7px 9px;
+        border: 1px solid transparent; border-radius: 9px;
+        background: transparent; text-align: left; cursor: pointer;
+      }
+      .room-list button:hover, .room-list button.current { background: rgba(255,107,85,.1); border-color: rgba(255,107,85,.35); }
+      .room-list span { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; font-size: 9px; }
+      .room-list strong, .room-list small { display: block; }
+      .room-list strong { font-size: 12px; } .room-list small { margin-top: 3px; color: rgba(255,255,255,.42); font-size: 9px; }
+
+      .start-modal {
+        position: fixed; z-index: 60; inset: 0; display: grid; place-items: center;
+        padding: 20px; background: rgba(7,9,10,.55); backdrop-filter: blur(8px);
+      }
+      .start-modal.hidden { display: none; }
+      .start-box {
+        width: min(470px,100%); padding: 30px; border: 1px solid rgba(255,255,255,.2);
+        border-radius: 20px; background: rgba(17,21,22,.94); box-shadow: 0 32px 100px rgba(0,0,0,.45);
+      }
+      .start-box p { margin: 0 0 8px; color: var(--accent); font-size: 10px; letter-spacing: .16em; }
+      .start-box h2 { margin: 0 0 14px; font-size: 38px; }
+      .start-box span { color: rgba(255,255,255,.68); font-size: 13px; line-height: 1.8; }
+      .start-box button {
+        width: 100%; height: 52px; margin-top: 22px; border: 0; border-radius: 10px;
+        background: var(--accent); color: var(--ink); font-weight: 700; cursor: pointer;
+      }
+
+      @media (max-width: 680px) {
+        .topbar { height: 68px; padding: 0 13px; }
+        .brand { gap: 8px; } .brand-mark { width: 38px; height: 38px; font-size: 10px; }
+        .brand p { font-size: 8px; } .brand h1 { max-width: 170px; font-size: 12px; }
+        .mode-switch { top: 72px; }
+        .mode-switch button { height: 31px; padding: 0 9px; font-size: 9px; }
+        .actions .icon-button:first-child { display: none; }
+        .overview-model {
+          width: 106vw;
+          transform: translate(-50%,-42%) rotateX(var(--rx)) rotateZ(var(--rz)) scale(var(--scale));
+        }
+        .room-marker { min-width: 24px; min-height: 24px; padding: 2px; }
+        .room-marker strong { display: none; }
+        .hint { top: 116px; max-width: calc(100vw - 120px); overflow: hidden; text-overflow: ellipsis; }
+        .compass { top: 115px; left: 12px; }
+        .info-card { right: 12px; bottom: 67px; left: 12px; width: auto; padding: 13px 14px; }
+        .info-index { width: 37px; height: 37px; }
+        .info-copy h2 { font-size: 18px; }
+        .info-copy small { display: none; }
+        .bottom-actions { right: 12px; bottom: 14px; left: 12px; justify-content: flex-end; transform: none; }
+        .bottom-actions button { height: 39px; font-size: 10px; }
+        .drawer { padding: 78px 15px 15px; }
+        .portal-row { justify-content: flex-start; overflow-x: auto; padding: 0 50px; }
+        .portal-row button { min-width: 126px; flex: 0 0 auto; }
+        .room-sign { width: 330px; }
+        .start-box { padding: 24px; } .start-box h2 { font-size: 30px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { transition-duration: .01ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">360</span>
+          <div><p>啟德 4A2 · 地下</p><h1>長者日間護理中心｜現況導覽</h1></div>
+        </div>
+        <nav class="mode-switch" aria-label="檢視模式">
+          <button id="overviewMode" class="active"><b>◇</b>總覽鳥瞰</button>
+          <button id="roomMode"><b>◎</b>室內 360°</button>
+        </nav>
+        <div class="actions">
+          <button class="icon-button" id="resetView" aria-label="重設視角">↺</button>
+          <button class="icon-button" id="openDrawer" aria-label="開啟圖則目錄">☰</button>
+        </div>
+      </header>
+
+      <section class="stage">
+        <div id="overviewView" class="view overview-view active">
+          <div class="overview-model" id="overviewModel">
+            <img src="../public/kai-tak-premises-plan.svg" alt="按照PDF圖則外框、牆線及柱位重建的啟德4A2鳥瞰圖" draggable="false" />
+            <div id="markers"></div>
+          </div>
+          <div class="compass">N<b>↑</b></div>
+          <div class="hint"><b>↔</b>拖曳旋轉 · 滾輪縮放 · 點擊房間進入</div>
+        </div>
+
+        <div id="roomView" class="view room-view">
+          <div class="room-world" id="roomWorld">
+            <div class="wall front"><div class="room-sign"><b></b><small></small></div><div class="door"></div></div>
+            <div class="wall back"><div class="room-sign"><b></b><small></small></div><div class="door"></div></div>
+            <div class="wall left"><div class="room-sign"><b></b><small></small></div><div class="door"></div></div>
+            <div class="wall right"><div class="room-sign"><b></b><small></small></div><div class="door"></div></div>
+            <div class="floor"></div><div class="ceiling"></div>
+          </div>
+          <i class="column" id="columnOne"></i><i class="column two" id="columnTwo"></i>
+          <div class="hint"><b>↔</b>拖曳觀看 360° · 滾輪縮放</div>
+          <div class="portal-row" id="portals"></div>
+        </div>
+
+        <article class="info-card">
+          <span class="info-index" id="infoIndex">3D</span>
+          <div class="info-copy">
+            <p id="infoEnglish">INTERACTIVE OVERVIEW</p>
+            <h2 id="infoName">總覽鳥瞰</h2>
+            <b id="infoArea">9 個互動空間</b>
+            <small id="infoDescription">外框、斜邊、凹位、主要牆線及柱位按照圖則重建；點擊房間標籤進入室內視角。</small>
+          </div>
+        </article>
+
+        <div class="bottom-actions">
+          <button id="selectRoom">＋ 選擇空間</button>
+          <button id="backOverview">◇ 返回總覽</button>
+        </div>
+      </section>
+
+      <aside class="drawer" id="drawer">
+        <div class="drawer-head">
+          <div><p>FLOOR PLAN</p><h2>圖則定位</h2></div>
+          <button id="closeDrawer" aria-label="關閉圖則目錄">×</button>
+        </div>
+        <img class="mini-plan" src="../public/kai-tak-floorplan.svg" alt="啟德4A2地下圖則" />
+        <div class="room-list" id="roomList"></div>
+      </aside>
+
+      <div class="start-modal" id="startModal">
+        <div class="start-box">
+          <p>INTERACTIVE MODEL · KAI TAK 4A2</p>
+          <h2>從鳥瞰了解整體空間</h2>
+          <span>總覽已按照PDF圖則的不規則線條及形狀重建。拖曳旋轉、滾輪縮放，點擊房間進入360°室內視角。</span>
+          <button id="startButton">開始探索模型　→</button>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const rooms = [
+        {id:"entrance",index:"01",name:"主入口",english:"Main entrance",area:"入口接待帶",description:"由西面入口進入，接待處位於前方。",x:4.3,y:79.7,color:"#ff725c",links:["reception","office"]},
+        {id:"reception",index:"02",name:"接待處",english:"Reception",area:"5.8 平方米",description:"接待處位於入口東面，連接中心主要活動空間。",x:12.8,y:79.7,color:"#e99a60",links:["entrance","office","dining"]},
+        {id:"office",index:"03",name:"辦公室／洗衣工作間",english:"Office & workroom",area:"14.5 + 16.4 平方米",description:"圖則西側的後勤空間，包括辦公室與洗衣／工作間。",x:14.3,y:62.2,color:"#607d88",links:["reception","entrance"]},
+        {id:"clinical",index:"04",name:"醫療／面談區",english:"Clinical & interview",area:"11.5 + 6.5 平方米",description:"包括診症、護士值勤／病房及面談室。",x:9.4,y:25.4,color:"#779195",links:["training","reception"]},
+        {id:"training",index:"05",name:"物理治療／訓練室",english:"Physiotherapy & training",area:"70.7 平方米",description:"圖則北面的大型訓練空間。",x:28.5,y:26.3,color:"#c99547",links:["clinical","dining"]},
+        {id:"changing",index:"06",name:"更衣／洗手間區",english:"Changing & washrooms",area:"設有下沉樓板",description:"包括男女更衣室、洗手間及無障礙設施。",x:25.6,y:68.3,color:"#548b99",links:["reception","dining"]},
+        {id:"multisensory",index:"07",name:"多感官室",english:"Multi-sensory area",area:"9.8 平方米",description:"位於接待與活動室之間的小型獨立空間。",x:37.5,y:78.8,color:"#8b73a7",links:["dining"]},
+        {id:"dining",index:"08",name:"飯廳／活動室",english:"Dining & activity room",area:"83.7 平方米",description:"中心中段的主要活動空間。",x:50.7,y:67.4,color:"#b66e57",links:["reception","training","multisensory","common"],columns:true},
+        {id:"common",index:"09",name:"公用室",english:"Common room",area:"124.4 平方米",description:"圖則東面最大空間，南側連接升降機及樓梯核心。",x:74.4,y:60.4,color:"#7b9060",links:["dining"],columns:true}
+      ];
+      const byId = Object.fromEntries(rooms.map(room => [room.id, room]));
+      const markerRoot = document.querySelector("#markers");
+      const roomList = document.querySelector("#roomList");
+      let current = rooms[0];
+      let mode = "overview";
+
+      rooms.forEach(room => {
+        const marker = document.createElement("button");
+        marker.className = "room-marker";
+        marker.dataset.room = room.id;
+        marker.style.cssText = `--x:${room.x}%;--y:${room.y}%;--color:${room.color}`;
+        marker.innerHTML = `<span>${room.index}</span><strong>${room.name}</strong>`;
+        marker.setAttribute("aria-label", `進入${room.name}`);
+        marker.addEventListener("pointerdown", event => event.stopPropagation());
+        marker.addEventListener("click", () => enterRoom(room.id));
+        markerRoot.append(marker);
+
+        const item = document.createElement("button");
+        item.dataset.room = room.id;
+        item.innerHTML = `<span>${room.index}</span><div><strong>${room.name}</strong><small>${room.area}</small></div><b>→</b>`;
+        item.addEventListener("click", () => enterRoom(room.id));
+        roomList.append(item);
+      });
+
+      function setMode(next) {
+        mode = next;
+        document.querySelector("#overviewView").classList.toggle("active", next === "overview");
+        document.querySelector("#roomView").classList.toggle("active", next === "room");
+        document.querySelector("#overviewMode").classList.toggle("active", next === "overview");
+        document.querySelector("#roomMode").classList.toggle("active", next === "room");
+        document.querySelector("#backOverview").hidden = next === "overview";
+        if (next === "overview") showOverviewInfo(); else showRoomInfo();
+      }
+
+      function enterRoom(id) {
+        current = byId[id];
+        document.querySelectorAll("[data-room]").forEach(el => {
+          el.classList.toggle("current", el.dataset.room === id);
+        });
+        document.querySelectorAll(".room-sign b").forEach(el => el.textContent = current.name);
+        document.querySelectorAll(".room-sign small").forEach(el => el.textContent = `${current.index} · ${current.english}`);
+        const portals = document.querySelector("#portals");
+        portals.innerHTML = "";
+        current.links.forEach(linkId => {
+          const button = document.createElement("button");
+          button.textContent = `→ ${byId[linkId].name}`;
+          button.addEventListener("click", () => enterRoom(linkId));
+          portals.append(button);
+        });
+        document.querySelector("#columnOne").hidden = !current.columns;
+        document.querySelector("#columnTwo").hidden = !current.columns;
+        document.querySelector("#drawer").classList.remove("open");
+        setMode("room");
+      }
+
+      function showOverviewInfo() {
+        document.querySelector("#infoIndex").textContent = "3D";
+        document.querySelector("#infoEnglish").textContent = "INTERACTIVE OVERVIEW";
+        document.querySelector("#infoName").textContent = "總覽鳥瞰";
+        document.querySelector("#infoArea").textContent = "9 個互動空間";
+        document.querySelector("#infoDescription").textContent = "外框、斜邊、凹位、主要牆線及柱位按照圖則重建；點擊房間標籤進入室內視角。";
+      }
+      function showRoomInfo() {
+        document.querySelector("#infoIndex").textContent = current.index;
+        document.querySelector("#infoEnglish").textContent = current.english.toUpperCase();
+        document.querySelector("#infoName").textContent = current.name;
+        document.querySelector("#infoArea").textContent = current.area;
+        document.querySelector("#infoDescription").textContent = current.description;
+      }
+
+      let overviewRx = 43, overviewRz = -4, overviewScale = 1;
+      let roomYaw = 0, roomPitch = 0, roomZoom = 1;
+      function applyOverview() {
+        const model = document.querySelector("#overviewModel");
+        model.style.setProperty("--rx", `${overviewRx}deg`);
+        model.style.setProperty("--rz", `${overviewRz}deg`);
+        model.style.setProperty("--scale", overviewScale);
+      }
+      function applyRoom() {
+        const world = document.querySelector("#roomWorld");
+        world.style.setProperty("--yaw", `${roomYaw}deg`);
+        world.style.setProperty("--pitch", `${roomPitch}deg`);
+        world.style.setProperty("--zoom", roomZoom);
+      }
+
+      function enableDrag(element, move) {
+        let active = false, x = 0, y = 0;
+        element.addEventListener("pointerdown", event => {
+          if (event.target.closest("button")) return;
+          active = true; x = event.clientX; y = event.clientY;
+          element.classList.add("dragging");
+          element.setPointerCapture(event.pointerId);
+        });
+        element.addEventListener("pointermove", event => {
+          if (!active) return;
+          const dx = event.clientX - x, dy = event.clientY - y;
+          x = event.clientX; y = event.clientY; move(dx,dy);
+        });
+        const stop = event => {
+          active = false; element.classList.remove("dragging");
+          if (element.hasPointerCapture?.(event.pointerId)) element.releasePointerCapture(event.pointerId);
+        };
+        element.addEventListener("pointerup", stop);
+        element.addEventListener("pointercancel", stop);
+      }
+
+      enableDrag(document.querySelector("#overviewView"), (dx,dy) => {
+        overviewRz += dx * .06;
+        overviewRx = Math.max(25, Math.min(65, overviewRx - dy * .08));
+        applyOverview();
+      });
+      enableDrag(document.querySelector("#roomView"), (dx,dy) => {
+        roomYaw -= dx * .22;
+        roomPitch = Math.max(-35, Math.min(35, roomPitch + dy * .12));
+        applyRoom();
+      });
+      document.querySelector("#overviewView").addEventListener("wheel", event => {
+        event.preventDefault();
+        overviewScale = Math.max(.7, Math.min(1.45, overviewScale - event.deltaY * .0008));
+        applyOverview();
+      }, {passive:false});
+      document.querySelector("#roomView").addEventListener("wheel", event => {
+        event.preventDefault();
+        roomZoom = Math.max(.75, Math.min(1.35, roomZoom - event.deltaY * .0007));
+        applyRoom();
+      }, {passive:false});
+
+      document.querySelector("#overviewMode").addEventListener("click", () => setMode("overview"));
+      document.querySelector("#roomMode").addEventListener("click", () => setMode("room"));
+      document.querySelector("#backOverview").addEventListener("click", () => setMode("overview"));
+      document.querySelector("#selectRoom").addEventListener("click", () => document.querySelector("#drawer").classList.add("open"));
+      document.querySelector("#openDrawer").addEventListener("click", () => document.querySelector("#drawer").classList.add("open"));
+      document.querySelector("#closeDrawer").addEventListener("click", () => document.querySelector("#drawer").classList.remove("open"));
+      document.querySelector("#startButton").addEventListener("click", () => document.querySelector("#startModal").classList.add("hidden"));
+      document.querySelector("#resetView").addEventListener("click", () => {
+        if (mode === "overview") { overviewRx = 43; overviewRz = -4; overviewScale = 1; applyOverview(); }
+        else { roomYaw = 0; roomPitch = 0; roomZoom = 1; applyRoom(); }
+      });
+      setMode("overview");
+    </script>
+  </body>
+</html>
