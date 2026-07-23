@@ -224,24 +224,341 @@ const roomById = Object.fromEntries(
   ROOMS.map((room) => [room.id, room]),
 ) as Record<RoomId, Room>;
 
-type OverviewFootprint = {
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
+type PlanPoint = [number, number];
+
+type OverviewZone = {
+  label: PlanPoint;
   color: string;
+  areas: PlanPoint[][];
 };
 
-const OVERVIEW_LAYOUT: Record<RoomId, OverviewFootprint> = {
-  entrance: { x: -16, z: 7.4, width: 4.8, depth: 4.2, color: "#ff725c" },
-  reception: { x: -10.9, z: 7.4, width: 4.8, depth: 4.2, color: "#e99a60" },
-  office: { x: -15.1, z: 1.8, width: 6.6, depth: 5.7, color: "#607d88" },
-  clinical: { x: -15.2, z: -5.7, width: 6.5, depth: 6.5, color: "#779195" },
-  training: { x: -6.4, z: -5.7, width: 10.6, depth: 6.5, color: "#c99547" },
-  changing: { x: -7.9, z: 1.7, width: 7.4, depth: 5.8, color: "#548b99" },
-  multisensory: { x: -5.9, z: 7.4, width: 4.6, depth: 4.2, color: "#8b73a7" },
-  dining: { x: 2.7, z: 2.8, width: 12.2, depth: 8.4, color: "#b66e57" },
-  common: { x: 14.8, z: 1.1, width: 11.7, depth: 11.9, color: "#7b9060" },
+const PLAN_WIDTH = 1599;
+const PLAN_HEIGHT = 571;
+const PLAN_WORLD_WIDTH = 46;
+const PLAN_SCALE = PLAN_WORLD_WIDTH / PLAN_WIDTH;
+
+function planToWorld([x, y]: PlanPoint): [number, number] {
+  return [
+    (x - PLAN_WIDTH / 2) * PLAN_SCALE,
+    (y - PLAN_HEIGHT / 2) * PLAN_SCALE,
+  ];
+}
+
+const PREMISES_OUTLINE: PlanPoint[] = [
+  [439, 36.5],
+  [572, 36.5],
+  [578.5, 42],
+  [579, 248.5],
+  [1229, 248.5],
+  [1236, 259.5],
+  [1246, 248.5],
+  [1502, 248.5],
+  [1509, 259.5],
+  [1518, 248.5],
+  [1581, 248.5],
+  [1584.5, 488],
+  [1579, 492.5],
+  [1372, 491.5],
+  [1367.5, 487],
+  [1367.5, 446],
+  [1348.5, 440],
+  [1348.5, 371],
+  [1308, 370.5],
+  [1307.5, 431],
+  [1303, 437.5],
+  [1020, 440.5],
+  [1003.5, 457],
+  [1003.5, 508],
+  [999, 512.5],
+  [958, 512.5],
+  [953, 531.5],
+  [650, 531.5],
+  [644.5, 524],
+  [644, 488.5],
+  [613.5, 489],
+  [613.5, 527],
+  [609, 531.5],
+  [570, 532.5],
+  [531, 531.5],
+  [524, 501.5],
+  [481, 501.5],
+  [476, 511.5],
+  [363, 512.5],
+  [330, 511.5],
+  [326, 488.5],
+  [59, 488.5],
+  [53.5, 484],
+  [52.5, 413],
+  [30.5, 409],
+  [29.5, 259],
+  [35, 252.5],
+  [82.5, 248],
+  [82.5, 201],
+  [35, 200.5],
+  [29.5, 189],
+  [35.5, 165],
+  [74.5, 94],
+  [89, 91.5],
+  [100, 72.5],
+  [133, 84.5],
+  [154, 67.5],
+  [432, 67.5],
+  [433.5, 42],
+];
+
+const INTERIOR_WALLS: PlanPoint[][] = [
+  [
+    [83, 248],
+    [138, 248],
+    [138, 159],
+    [235, 159],
+    [235, 257],
+    [360, 257],
+    [360, 159],
+  ],
+  [
+    [138, 258],
+    [138, 410],
+    [59, 410],
+  ],
+  [
+    [169, 310],
+    [335, 310],
+    [335, 486],
+  ],
+  [
+    [169, 310],
+    [169, 418],
+  ],
+  [
+    [274, 310],
+    [534, 310],
+    [534, 500],
+    [363, 500],
+    [363, 486],
+    [335, 486],
+    [335, 418],
+    [274, 418],
+    [274, 310],
+  ],
+  [
+    [335, 352],
+    [534, 352],
+  ],
+  [
+    [335, 420],
+    [534, 420],
+  ],
+  [
+    [590, 400],
+    [530, 400],
+    [530, 486],
+  ],
+  [
+    [670, 400],
+    [644, 400],
+    [644, 488],
+  ],
+  [
+    [234, 257],
+    [418, 257],
+  ],
+  [
+    [468, 257],
+    [574, 257],
+  ],
+  [
+    [590, 310],
+    [637, 310],
+  ],
+  [
+    [675, 310],
+    [874, 310],
+  ],
+  [
+    [910, 310],
+    [1015, 310],
+    [1015, 439],
+  ],
+];
+
+const STRUCTURAL_COLUMNS: PlanPoint[] = [
+  [327, 251],
+  [541, 251],
+  [739, 251],
+  [1042, 251],
+  [1230, 251],
+  [1509, 251],
+  [589, 407],
+  [735, 407],
+  [1042, 407],
+  [1235, 407],
+  [1509, 407],
+];
+
+const OVERVIEW_LAYOUT: Record<RoomId, OverviewZone> = {
+  entrance: {
+    label: [68, 455],
+    color: "#ff725c",
+    areas: [
+      [
+        [53, 411],
+        [118, 411],
+        [118, 488],
+        [59, 488],
+        [53, 484],
+      ],
+    ],
+  },
+  reception: {
+    label: [205, 455],
+    color: "#e99a60",
+    areas: [
+      [
+        [118, 418],
+        [330, 418],
+        [330, 488],
+        [118, 488],
+      ],
+    ],
+  },
+  office: {
+    label: [228, 355],
+    color: "#607d88",
+    areas: [
+      [
+        [30, 258],
+        [138, 258],
+        [138, 410],
+        [53, 410],
+        [53, 409],
+        [30, 409],
+      ],
+      [
+        [169, 310],
+        [335, 310],
+        [335, 418],
+        [169, 418],
+      ],
+    ],
+  },
+  clinical: {
+    label: [150, 145],
+    color: "#779195",
+    areas: [
+      [
+        [35, 196],
+        [35, 168],
+        [75, 94],
+        [89, 92],
+        [100, 73],
+        [133, 85],
+        [154, 68],
+        [235, 68],
+        [235, 257],
+        [138, 257],
+        [138, 196],
+      ],
+    ],
+  },
+  training: {
+    label: [455, 150],
+    color: "#c99547",
+    areas: [
+      [
+        [235, 68],
+        [433, 68],
+        [439, 37],
+        [572, 37],
+        [579, 43],
+        [579, 249],
+        [360, 249],
+        [360, 159],
+        [235, 159],
+      ],
+    ],
+  },
+  changing: {
+    label: [410, 390],
+    color: "#548b99",
+    areas: [
+      [
+        [274, 310],
+        [534, 310],
+        [534, 501],
+        [481, 501],
+        [476, 512],
+        [363, 512],
+        [363, 486],
+        [335, 486],
+        [335, 418],
+        [274, 418],
+      ],
+    ],
+  },
+  multisensory: {
+    label: [600, 450],
+    color: "#8b73a7",
+    areas: [
+      [
+        [530, 400],
+        [590, 400],
+        [590, 488],
+        [614, 488],
+        [614, 531],
+        [609, 532],
+        [570, 532],
+        [531, 531],
+        [524, 501],
+        [530, 486],
+      ],
+    ],
+  },
+  dining: {
+    label: [810, 385],
+    color: "#b66e57",
+    areas: [
+      [
+        [590, 310],
+        [1015, 310],
+        [1015, 439],
+        [1004, 457],
+        [1004, 508],
+        [999, 513],
+        [958, 513],
+        [953, 532],
+        [650, 532],
+        [644, 524],
+        [644, 488],
+        [670, 488],
+        [670, 400],
+        [590, 400],
+      ],
+    ],
+  },
+  common: {
+    label: [1190, 345],
+    color: "#7b9060",
+    areas: [
+      [
+        [579, 249],
+        [1584, 249],
+        [1584, 488],
+        [1372, 492],
+        [1368, 487],
+        [1368, 446],
+        [1349, 440],
+        [1349, 371],
+        [1308, 371],
+        [1308, 431],
+        [1303, 438],
+        [1020, 441],
+        [1015, 439],
+        [1015, 310],
+        [579, 310],
+      ],
+    ],
+  },
 };
 
 function mulberry32(seed: number) {
@@ -552,8 +869,13 @@ function OverviewFallback({
   return (
     <div className="overview-fallback">
       <div className="overview-fallback-plan">
+        <img
+          src="/kai-tak-premises-plan.svg"
+          alt="按PDF圖則線條重建的啟德4A2處所平面輪廓"
+          draggable={false}
+        />
         {ROOMS.map((room) => {
-          const footprint = OVERVIEW_LAYOUT[room.id];
+          const zone = OVERVIEW_LAYOUT[room.id];
           return (
             <button
               type="button"
@@ -561,11 +883,9 @@ function OverviewFallback({
               className={currentRoom === room.id ? "is-current" : ""}
               style={
                 {
-                  "--overview-x": `${((footprint.x - footprint.width / 2 + 21) / 42) * 100}%`,
-                  "--overview-z": `${((footprint.z - footprint.depth / 2 + 12) / 24) * 100}%`,
-                  "--overview-width": `${(footprint.width / 42) * 100}%`,
-                  "--overview-depth": `${(footprint.depth / 24) * 100}%`,
-                  "--overview-color": footprint.color,
+                  "--overview-x": `${(zone.label[0] / PLAN_WIDTH) * 100}%`,
+                  "--overview-z": `${(zone.label[1] / PLAN_HEIGHT) * 100}%`,
+                  "--overview-color": zone.color,
                 } as CSSProperties
               }
               onClick={() => onEnter(room.id)}
@@ -666,112 +986,171 @@ function OverviewCanvas({
         sunlight.shadow.camera.bottom = -24;
         scene.add(sunlight);
 
-        const grid = new THREE.GridHelper(58, 29, "#343b3c", "#252b2c");
-        grid.position.y = -0.56;
+        const grid = new THREE.GridHelper(62, 31, "#343b3c", "#252b2c");
+        grid.position.y = -0.42;
         scene.add(grid);
 
-        const baseMaterial = new THREE.MeshStandardMaterial({
-          color: "#282d2e",
-          roughness: 0.86,
-          metalness: 0.08,
+        function shapeFromPlan(points: PlanPoint[]) {
+          const shape = new THREE.Shape();
+          points.forEach((point, index) => {
+            const [x, z] = planToWorld(point);
+            if (index === 0) shape.moveTo(x, -z);
+            else shape.lineTo(x, -z);
+          });
+          shape.closePath();
+          return shape;
+        }
+
+        const premisesShape = shapeFromPlan(PREMISES_OUTLINE);
+        const baseGeometry = new THREE.ExtrudeGeometry(premisesShape, {
+          depth: 0.34,
+          bevelEnabled: true,
+          bevelSegments: 1,
+          bevelSize: 0.045,
+          bevelThickness: 0.045,
         });
+        baseGeometry.rotateX(-Math.PI / 2);
         const base = new THREE.Mesh(
-          new THREE.BoxGeometry(44, 0.8, 26),
-          baseMaterial,
+          baseGeometry,
+          new THREE.MeshStandardMaterial({
+            color: "#343a3b",
+            roughness: 0.88,
+            metalness: 0.06,
+          }),
         );
-        base.position.y = -0.48;
+        base.position.y = -0.38;
         base.receiveShadow = true;
+        base.castShadow = true;
         scene.add(base);
 
-        const boundary = new THREE.LineSegments(
-          new THREE.EdgesGeometry(new THREE.BoxGeometry(44, 0.82, 26)),
-          new THREE.LineBasicMaterial({
-            color: "#60696b",
-            transparent: true,
-            opacity: 0.72,
-          }),
+        const planTexture = new THREE.TextureLoader().load(
+          "/kai-tak-premises-plan.svg",
         );
-        boundary.position.y = -0.48;
-        scene.add(boundary);
-
-        const corridor = new THREE.Mesh(
-          new THREE.BoxGeometry(35.8, 0.08, 1.35),
+        planTexture.colorSpace = THREE.SRGBColorSpace;
+        planTexture.anisotropy = 8;
+        const planFloor = new THREE.Mesh(
+          new THREE.PlaneGeometry(
+            PLAN_WORLD_WIDTH,
+            PLAN_HEIGHT * PLAN_SCALE,
+          ),
           new THREE.MeshStandardMaterial({
-            color: "#d6d0c1",
-            roughness: 0.92,
+            map: planTexture,
+            transparent: true,
+            alphaTest: 0.08,
+            roughness: 0.96,
+            metalness: 0,
+            side: THREE.DoubleSide,
           }),
         );
-        corridor.position.set(-1.2, -0.01, 5.05);
-        corridor.receiveShadow = true;
-        scene.add(corridor);
+        planFloor.rotation.x = -Math.PI / 2;
+        planFloor.position.y = 0.015;
+        planFloor.receiveShadow = true;
+        scene.add(planFloor);
 
-        const roomMeshes: ThreeTypes.Mesh[] = [];
-        const roomMaterials = new Map<RoomId, ThreeTypes.MeshStandardMaterial>();
+        const exteriorWallMaterial = new THREE.MeshStandardMaterial({
+          color: "#d8d3c7",
+          roughness: 0.8,
+          metalness: 0.02,
+          transparent: true,
+          opacity: 0.9,
+        });
+        const interiorWallMaterial = new THREE.MeshStandardMaterial({
+          color: "#6f7473",
+          roughness: 0.86,
+          metalness: 0.03,
+          transparent: true,
+          opacity: 0.88,
+        });
 
-        ROOMS.forEach((room) => {
-          const footprint = OVERVIEW_LAYOUT[room.id];
-          const material = new THREE.MeshStandardMaterial({
-            color: footprint.color,
-            roughness: 0.68,
-            metalness: 0.04,
-            emissive: "#000000",
-          });
-          roomMaterials.set(room.id, material);
-
-          const floor = new THREE.Mesh(
-            new THREE.BoxGeometry(footprint.width - 0.18, 0.34, footprint.depth - 0.18),
+        function addWallSegment(
+          start: PlanPoint,
+          end: PlanPoint,
+          height: number,
+          thickness: number,
+          material: ThreeTypes.Material,
+        ) {
+          const [x1, z1] = planToWorld(start);
+          const [x2, z2] = planToWorld(end);
+          const dx = x2 - x1;
+          const dz = z2 - z1;
+          const length = Math.hypot(dx, dz);
+          if (length < 0.03) return;
+          const wall = new THREE.Mesh(
+            new THREE.BoxGeometry(length, height, thickness),
             material,
           );
-          floor.position.set(footprint.x, 0.16, footprint.z);
-          floor.castShadow = true;
-          floor.receiveShadow = true;
-          floor.userData.roomId = room.id;
-          scene.add(floor);
-          roomMeshes.push(floor);
+          wall.position.set((x1 + x2) / 2, height / 2 + 0.04, (z1 + z2) / 2);
+          wall.rotation.y = -Math.atan2(dz, dx);
+          wall.castShadow = true;
+          wall.receiveShadow = true;
+          scene.add(wall);
+        }
 
-          const wallMaterial = material.clone();
-          wallMaterial.transparent = true;
-          wallMaterial.opacity = 0.82;
-          const wallHeight = room.id === "common" ? 1.75 : 1.55;
-          const wallThickness = 0.14;
-          const walls = [
-            {
-              width: footprint.width,
-              depth: wallThickness,
-              x: footprint.x,
-              z: footprint.z - footprint.depth / 2,
-            },
-            {
-              width: footprint.width,
-              depth: wallThickness,
-              x: footprint.x,
-              z: footprint.z + footprint.depth / 2,
-            },
-            {
-              width: wallThickness,
-              depth: footprint.depth,
-              x: footprint.x - footprint.width / 2,
-              z: footprint.z,
-            },
-            {
-              width: wallThickness,
-              depth: footprint.depth,
-              x: footprint.x + footprint.width / 2,
-              z: footprint.z,
-            },
-          ];
+        PREMISES_OUTLINE.forEach((point, index) => {
+          addWallSegment(
+            point,
+            PREMISES_OUTLINE[(index + 1) % PREMISES_OUTLINE.length],
+            1.18,
+            0.105,
+            exteriorWallMaterial,
+          );
+        });
 
-          walls.forEach((wall) => {
-            const wallMesh = new THREE.Mesh(
-              new THREE.BoxGeometry(wall.width, wallHeight, wall.depth),
-              wallMaterial,
+        INTERIOR_WALLS.forEach((polyline) => {
+          for (let index = 0; index < polyline.length - 1; index += 1) {
+            addWallSegment(
+              polyline[index],
+              polyline[index + 1],
+              0.72,
+              0.075,
+              interiorWallMaterial,
             );
-            wallMesh.position.set(wall.x, wallHeight / 2 + 0.3, wall.z);
-            wallMesh.castShadow = true;
-            wallMesh.userData.roomId = room.id;
-            scene.add(wallMesh);
-            roomMeshes.push(wallMesh);
+          }
+        });
+
+        STRUCTURAL_COLUMNS.forEach((point) => {
+          const [x, z] = planToWorld(point);
+          const column = new THREE.Mesh(
+            new THREE.BoxGeometry(0.46, 1.05, 0.46),
+            new THREE.MeshStandardMaterial({
+              color: "#4b4f4e",
+              roughness: 0.76,
+            }),
+          );
+          column.position.set(x, 0.545, z);
+          column.castShadow = true;
+          scene.add(column);
+        });
+
+        const roomMeshes: ThreeTypes.Mesh[] = [];
+        const roomMaterials = new Map<
+          RoomId,
+          ThreeTypes.MeshBasicMaterial[]
+        >();
+
+        ROOMS.forEach((room) => {
+          const zone = OVERVIEW_LAYOUT[room.id];
+          const materials: ThreeTypes.MeshBasicMaterial[] = [];
+
+          zone.areas.forEach((points) => {
+            const material = new THREE.MeshBasicMaterial({
+              color: zone.color,
+              transparent: true,
+              opacity: room.id === currentRoom ? 0.1 : 0.035,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+            });
+            const geometry = new THREE.ShapeGeometry(shapeFromPlan(points));
+            geometry.rotateX(-Math.PI / 2);
+            const hitArea = new THREE.Mesh(geometry, material);
+            hitArea.position.y = 0.055;
+            hitArea.userData.roomId = room.id;
+            hitArea.renderOrder = 6;
+            scene.add(hitArea);
+            roomMeshes.push(hitArea);
+            materials.push(material);
           });
+          roomMaterials.set(room.id, materials);
 
           const labelMaterial = new THREE.SpriteMaterial({
             map: overviewLabelTexture(room),
@@ -780,12 +1159,10 @@ function OverviewCanvas({
             depthWrite: false,
           });
           const label = new THREE.Sprite(labelMaterial);
-          label.position.set(
-            footprint.x,
-            wallHeight + 2.05,
-            footprint.z,
-          );
-          const labelWidth = Math.min(5.7, Math.max(3.45, footprint.width * 0.72));
+          const [labelX, labelZ] = planToWorld(zone.label);
+          label.position.set(labelX, 2.3, labelZ);
+          const labelWidth =
+            room.id === "common" || room.id === "dining" ? 4.45 : 3.45;
           label.scale.set(labelWidth, labelWidth / 3, 1);
           label.renderOrder = 20;
           scene.add(label);
@@ -809,7 +1186,8 @@ function OverviewCanvas({
         markerHead.position.y = 2.8;
         markerHead.rotation.z = Math.PI;
         entranceMarker.add(markerStem, markerHead);
-        entranceMarker.position.set(-19.4, 0, 7.4);
+        const [entranceX, entranceZ] = planToWorld([10, 452]);
+        entranceMarker.position.set(entranceX, 0, entranceZ);
         scene.add(entranceMarker);
 
         const raycaster = new THREE.Raycaster();
@@ -852,10 +1230,14 @@ function OverviewCanvas({
           if (nextId === hoveredId) return;
 
           if (hoveredId) {
-            roomMaterials.get(hoveredId)?.emissive.set("#000000");
+            roomMaterials.get(hoveredId)?.forEach((material) => {
+              material.opacity = hoveredId === currentRoom ? 0.1 : 0.035;
+            });
           }
           if (nextId) {
-            roomMaterials.get(nextId)?.emissive.set("#51251f");
+            roomMaterials.get(nextId)?.forEach((material) => {
+              material.opacity = 0.22;
+            });
           }
           hoveredId = nextId;
           setHoveredRoom(nextId);
@@ -901,7 +1283,9 @@ function OverviewCanvas({
 
         function onPointerLeave() {
           if (hoveredId) {
-            roomMaterials.get(hoveredId)?.emissive.set("#000000");
+            roomMaterials.get(hoveredId)?.forEach((material) => {
+              material.opacity = hoveredId === currentRoom ? 0.1 : 0.035;
+            });
           }
           hoveredId = null;
           setHoveredRoom(null);
@@ -980,7 +1364,7 @@ function OverviewCanvas({
       cancelled = true;
       cleanup?.();
     };
-  }, []);
+  }, [currentRoom]);
 
   const dispatchControl = (control: "zoomIn" | "zoomOut" | "reset") => {
     const mount = mountRef.current;
@@ -1055,11 +1439,11 @@ function OverviewCanvas({
       <div className="overview-legend">
         <span>
           <i className="overview-legend-room" />
-          可進入空間
+          房間定位標籤
         </span>
         <span>
           <i className="overview-legend-route" />
-          主要動線
+          原圖則牆線
         </span>
       </div>
     </div>
@@ -1845,7 +2229,8 @@ export default function Home() {
               <h2>總覽鳥瞰</h2>
               <span>9 個互動空間</span>
               <small>
-                拖曳旋轉模型、滾輪縮放；點擊彩色房間即可進入相應的 360° 室內視角。
+                鳥瞰外框、斜邊、凹位、牆線及柱位按圖則重建；點擊房間標籤或圖則區域進入
+                360° 室內視角。
               </small>
             </div>
           </div>
@@ -2009,14 +2394,14 @@ export default function Home() {
                 <span className="certainty-dot exact" />
                 <div>
                   <h3>按圖則建立</h3>
-                  <p>處所界線、房間用途、標示面積及大致相互位置。</p>
+                  <p>處所外框、斜邊、凹位、主要牆線、柱位、房間用途及標示面積。</p>
                 </div>
               </article>
               <article>
                 <span className="certainty-dot estimate" />
                 <div>
                   <h3>按比例推算</h3>
-                  <p>空間長闊、門口位置、柱位及各定位點的視角。</p>
+                  <p>未有立面資料的樓層高度、門口細節及各定位點的室內視角。</p>
                 </div>
               </article>
               <article>
