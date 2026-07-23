@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "啟德4A2 360°現場導覽",
-  description: "按啟德4A2地下長者日間護理中心圖則建立的互動360°空間導覽。",
+  title: "啟德4A2｜360°互動現場導覽",
+  description:
+    "按啟德4A2地下圖則建立的互動鳥瞰模型及360°室內空間導覽。",
   other: {
     "codex-preview": "development",
   },
