@@ -224,6 +224,26 @@ const roomById = Object.fromEntries(
   ROOMS.map((room) => [room.id, room]),
 ) as Record<RoomId, Room>;
 
+type OverviewFootprint = {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  color: string;
+};
+
+const OVERVIEW_LAYOUT: Record<RoomId, OverviewFootprint> = {
+  entrance: { x: -16, z: 7.4, width: 4.8, depth: 4.2, color: "#ff725c" },
+  reception: { x: -10.9, z: 7.4, width: 4.8, depth: 4.2, color: "#e99a60" },
+  office: { x: -15.1, z: 1.8, width: 6.6, depth: 5.7, color: "#607d88" },
+  clinical: { x: -15.2, z: -5.7, width: 6.5, depth: 6.5, color: "#779195" },
+  training: { x: -6.4, z: -5.7, width: 10.6, depth: 6.5, color: "#c99547" },
+  changing: { x: -7.9, z: 1.7, width: 7.4, depth: 5.8, color: "#548b99" },
+  multisensory: { x: -5.9, z: 7.4, width: 4.6, depth: 4.2, color: "#8b73a7" },
+  dining: { x: 2.7, z: 2.8, width: 12.2, depth: 8.4, color: "#b66e57" },
+  common: { x: 14.8, z: 1.1, width: 11.7, depth: 11.9, color: "#7b9060" },
+};
+
 function mulberry32(seed: number) {
   return () => {
     seed |= 0;
@@ -338,6 +358,39 @@ function roomSignTexture(room: Room) {
   ctx.font = "600 34px Arial, sans-serif";
   ctx.fillStyle = "#df4d3a";
   ctx.fillText(room.area, 70, 291);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function overviewLabelTexture(room: Room) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 720;
+  canvas.height = 240;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "rgba(18,22,24,.94)";
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 704, 224, 26);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.32)";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.fillStyle = "#ff725c";
+  ctx.beginPath();
+  ctx.arc(105, 120, 58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#171a1b";
+  ctx.font = "800 48px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(room.index, 105, 122);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 43px Arial, sans-serif";
+  ctx.fillText(room.name, 190, 105);
+  ctx.fillStyle = "rgba(255,255,255,.62)";
+  ctx.font = "500 25px Arial, sans-serif";
+  ctx.fillText(room.area, 190, 155);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -485,6 +538,530 @@ function FallbackScene({
         ))}
       </div>
       <span className="fallback-note">兼容模式 · 可拖曳環視</span>
+    </div>
+  );
+}
+
+function OverviewFallback({
+  currentRoom,
+  onEnter,
+}: {
+  currentRoom: RoomId;
+  onEnter: (roomId: RoomId) => void;
+}) {
+  return (
+    <div className="overview-fallback">
+      <div className="overview-fallback-plan">
+        {ROOMS.map((room) => {
+          const footprint = OVERVIEW_LAYOUT[room.id];
+          return (
+            <button
+              type="button"
+              key={room.id}
+              className={currentRoom === room.id ? "is-current" : ""}
+              style={
+                {
+                  "--overview-x": `${((footprint.x - footprint.width / 2 + 21) / 42) * 100}%`,
+                  "--overview-z": `${((footprint.z - footprint.depth / 2 + 12) / 24) * 100}%`,
+                  "--overview-width": `${(footprint.width / 42) * 100}%`,
+                  "--overview-depth": `${(footprint.depth / 24) * 100}%`,
+                  "--overview-color": footprint.color,
+                } as CSSProperties
+              }
+              onClick={() => onEnter(room.id)}
+              aria-label={`進入${room.name}`}
+            >
+              <span>{room.index}</span>
+              <strong>{room.name}</strong>
+            </button>
+          );
+        })}
+      </div>
+      <span className="fallback-note">兼容模式 · 點擊房間進入</span>
+    </div>
+  );
+}
+
+function OverviewCanvas({
+  currentRoom,
+  onEnter,
+}: {
+  currentRoom: RoomId;
+  onEnter: (roomId: RoomId) => void;
+}) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const onEnterRef = useRef(onEnter);
+  const [dragging, setDragging] = useState(false);
+  const [webglFailed, setWebglFailed] = useState(false);
+  const [zoomDistance, setZoomDistance] = useState(42);
+  const [hoveredRoom, setHoveredRoom] = useState<RoomId | null>(null);
+
+  useEffect(() => {
+    onEnterRef.current = onEnter;
+  }, [onEnter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
+
+    void import("three")
+      .then((threeModule) => {
+        if (cancelled) return;
+        THREE = threeModule;
+
+        const mount = mountRef.current;
+        if (!mount) return;
+
+        const testCanvas = document.createElement("canvas");
+        if (!testCanvas.getContext("webgl2")) {
+          setWebglFailed(true);
+          return;
+        }
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color("#171b1c");
+        scene.fog = new THREE.Fog("#171b1c", 42, 78);
+
+        const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 140);
+        let yaw = -0.7;
+        let pitch = 0.78;
+        let radius = 42;
+
+        let renderer: ThreeTypes.WebGLRenderer;
+        try {
+          renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: false,
+            powerPreference: "high-performance",
+          });
+        } catch {
+          setWebglFailed(true);
+          return;
+        }
+
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.18;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.domElement.setAttribute(
+          "aria-label",
+          "啟德4A2互動鳥瞰模型，可拖曳旋轉、滾輪縮放及點擊房間進入",
+        );
+        renderer.domElement.setAttribute("role", "application");
+        renderer.domElement.tabIndex = 0;
+        mount.prepend(renderer.domElement);
+
+        const ambient = new THREE.HemisphereLight("#f4f7f2", "#302b28", 2.2);
+        scene.add(ambient);
+
+        const sunlight = new THREE.DirectionalLight("#fff1d6", 3.6);
+        sunlight.position.set(-18, 32, 21);
+        sunlight.castShadow = true;
+        sunlight.shadow.mapSize.set(2048, 2048);
+        sunlight.shadow.camera.left = -30;
+        sunlight.shadow.camera.right = 30;
+        sunlight.shadow.camera.top = 24;
+        sunlight.shadow.camera.bottom = -24;
+        scene.add(sunlight);
+
+        const grid = new THREE.GridHelper(58, 29, "#343b3c", "#252b2c");
+        grid.position.y = -0.56;
+        scene.add(grid);
+
+        const baseMaterial = new THREE.MeshStandardMaterial({
+          color: "#282d2e",
+          roughness: 0.86,
+          metalness: 0.08,
+        });
+        const base = new THREE.Mesh(
+          new THREE.BoxGeometry(44, 0.8, 26),
+          baseMaterial,
+        );
+        base.position.y = -0.48;
+        base.receiveShadow = true;
+        scene.add(base);
+
+        const boundary = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(44, 0.82, 26)),
+          new THREE.LineBasicMaterial({
+            color: "#60696b",
+            transparent: true,
+            opacity: 0.72,
+          }),
+        );
+        boundary.position.y = -0.48;
+        scene.add(boundary);
+
+        const corridor = new THREE.Mesh(
+          new THREE.BoxGeometry(35.8, 0.08, 1.35),
+          new THREE.MeshStandardMaterial({
+            color: "#d6d0c1",
+            roughness: 0.92,
+          }),
+        );
+        corridor.position.set(-1.2, -0.01, 5.05);
+        corridor.receiveShadow = true;
+        scene.add(corridor);
+
+        const roomMeshes: ThreeTypes.Mesh[] = [];
+        const roomMaterials = new Map<RoomId, ThreeTypes.MeshStandardMaterial>();
+
+        ROOMS.forEach((room) => {
+          const footprint = OVERVIEW_LAYOUT[room.id];
+          const material = new THREE.MeshStandardMaterial({
+            color: footprint.color,
+            roughness: 0.68,
+            metalness: 0.04,
+            emissive: "#000000",
+          });
+          roomMaterials.set(room.id, material);
+
+          const floor = new THREE.Mesh(
+            new THREE.BoxGeometry(footprint.width - 0.18, 0.34, footprint.depth - 0.18),
+            material,
+          );
+          floor.position.set(footprint.x, 0.16, footprint.z);
+          floor.castShadow = true;
+          floor.receiveShadow = true;
+          floor.userData.roomId = room.id;
+          scene.add(floor);
+          roomMeshes.push(floor);
+
+          const wallMaterial = material.clone();
+          wallMaterial.transparent = true;
+          wallMaterial.opacity = 0.82;
+          const wallHeight = room.id === "common" ? 1.75 : 1.55;
+          const wallThickness = 0.14;
+          const walls = [
+            {
+              width: footprint.width,
+              depth: wallThickness,
+              x: footprint.x,
+              z: footprint.z - footprint.depth / 2,
+            },
+            {
+              width: footprint.width,
+              depth: wallThickness,
+              x: footprint.x,
+              z: footprint.z + footprint.depth / 2,
+            },
+            {
+              width: wallThickness,
+              depth: footprint.depth,
+              x: footprint.x - footprint.width / 2,
+              z: footprint.z,
+            },
+            {
+              width: wallThickness,
+              depth: footprint.depth,
+              x: footprint.x + footprint.width / 2,
+              z: footprint.z,
+            },
+          ];
+
+          walls.forEach((wall) => {
+            const wallMesh = new THREE.Mesh(
+              new THREE.BoxGeometry(wall.width, wallHeight, wall.depth),
+              wallMaterial,
+            );
+            wallMesh.position.set(wall.x, wallHeight / 2 + 0.3, wall.z);
+            wallMesh.castShadow = true;
+            wallMesh.userData.roomId = room.id;
+            scene.add(wallMesh);
+            roomMeshes.push(wallMesh);
+          });
+
+          const labelMaterial = new THREE.SpriteMaterial({
+            map: overviewLabelTexture(room),
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+          });
+          const label = new THREE.Sprite(labelMaterial);
+          label.position.set(
+            footprint.x,
+            wallHeight + 2.05,
+            footprint.z,
+          );
+          const labelWidth = Math.min(5.7, Math.max(3.45, footprint.width * 0.72));
+          label.scale.set(labelWidth, labelWidth / 3, 1);
+          label.renderOrder = 20;
+          scene.add(label);
+        });
+
+        const entranceMarker = new THREE.Group();
+        const markerMaterial = new THREE.MeshStandardMaterial({
+          color: "#ff725c",
+          roughness: 0.45,
+          metalness: 0.08,
+        });
+        const markerStem = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.09, 2.5, 12),
+          markerMaterial,
+        );
+        markerStem.position.y = 1.25;
+        const markerHead = new THREE.Mesh(
+          new THREE.ConeGeometry(0.38, 0.85, 18),
+          markerMaterial,
+        );
+        markerHead.position.y = 2.8;
+        markerHead.rotation.z = Math.PI;
+        entranceMarker.add(markerStem, markerHead);
+        entranceMarker.position.set(-19.4, 0, 7.4);
+        scene.add(entranceMarker);
+
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        let pointerDown = false;
+        let dragDistance = 0;
+        let previousX = 0;
+        let previousY = 0;
+        let hoveredId: RoomId | null = null;
+
+        function updateCamera() {
+          const horizontal = Math.cos(pitch) * radius;
+          camera.position.set(
+            Math.sin(yaw) * horizontal,
+            Math.sin(pitch) * radius,
+            Math.cos(yaw) * horizontal,
+          );
+          camera.lookAt(0, 0.6, 0);
+          camera.updateProjectionMatrix();
+        }
+
+        function resize() {
+          const rect = mount.getBoundingClientRect();
+          renderer.setSize(rect.width, rect.height, false);
+          camera.aspect = rect.width / Math.max(1, rect.height);
+          camera.updateProjectionMatrix();
+        }
+
+        function setPointer(event: PointerEvent) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+          pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function updateHover(event: PointerEvent) {
+          setPointer(event);
+          raycaster.setFromCamera(pointer, camera);
+          const hit = raycaster.intersectObjects(roomMeshes, false)[0];
+          const nextId = (hit?.object.userData.roomId as RoomId | undefined) ?? null;
+          if (nextId === hoveredId) return;
+
+          if (hoveredId) {
+            roomMaterials.get(hoveredId)?.emissive.set("#000000");
+          }
+          if (nextId) {
+            roomMaterials.get(nextId)?.emissive.set("#51251f");
+          }
+          hoveredId = nextId;
+          setHoveredRoom(nextId);
+          renderer.domElement.style.cursor = nextId ? "pointer" : "grab";
+        }
+
+        function onPointerDown(event: PointerEvent) {
+          pointerDown = true;
+          dragDistance = 0;
+          previousX = event.clientX;
+          previousY = event.clientY;
+          renderer.domElement.setPointerCapture(event.pointerId);
+          renderer.domElement.focus();
+          setDragging(true);
+        }
+
+        function onPointerMove(event: PointerEvent) {
+          if (!pointerDown) {
+            updateHover(event);
+            return;
+          }
+          const dx = event.clientX - previousX;
+          const dy = event.clientY - previousY;
+          dragDistance += Math.abs(dx) + Math.abs(dy);
+          yaw -= dx * 0.006;
+          pitch = THREE.MathUtils.clamp(pitch + dy * 0.004, 0.34, 1.34);
+          previousX = event.clientX;
+          previousY = event.clientY;
+          updateCamera();
+        }
+
+        function onPointerUp(event: PointerEvent) {
+          pointerDown = false;
+          setDragging(false);
+          renderer.domElement.releasePointerCapture(event.pointerId);
+          if (dragDistance >= 8) return;
+          setPointer(event);
+          raycaster.setFromCamera(pointer, camera);
+          const hit = raycaster.intersectObjects(roomMeshes, false)[0];
+          const roomId = hit?.object.userData.roomId as RoomId | undefined;
+          if (roomId) onEnterRef.current(roomId);
+        }
+
+        function onPointerLeave() {
+          if (hoveredId) {
+            roomMaterials.get(hoveredId)?.emissive.set("#000000");
+          }
+          hoveredId = null;
+          setHoveredRoom(null);
+        }
+
+        function onWheel(event: WheelEvent) {
+          event.preventDefault();
+          radius = THREE.MathUtils.clamp(radius + event.deltaY * 0.025, 24, 58);
+          setZoomDistance(Math.round(radius));
+          updateCamera();
+        }
+
+        function resetView() {
+          yaw = -0.7;
+          pitch = 0.78;
+          radius = 42;
+          setZoomDistance(42);
+          updateCamera();
+        }
+
+        function onKeyDown(event: KeyboardEvent) {
+          if (event.key === "ArrowLeft") yaw += 0.08;
+          else if (event.key === "ArrowRight") yaw -= 0.08;
+          else if (event.key === "ArrowUp")
+            pitch = THREE.MathUtils.clamp(pitch + 0.06, 0.34, 1.34);
+          else if (event.key === "ArrowDown")
+            pitch = THREE.MathUtils.clamp(pitch - 0.06, 0.34, 1.34);
+          else if (event.key.toLowerCase() === "r") resetView();
+          else return;
+          event.preventDefault();
+          updateCamera();
+        }
+
+        updateCamera();
+        resize();
+
+        const resizeObserver = new ResizeObserver(resize);
+        resizeObserver.observe(mount);
+        renderer.domElement.addEventListener("pointerdown", onPointerDown);
+        renderer.domElement.addEventListener("pointermove", onPointerMove);
+        renderer.domElement.addEventListener("pointerup", onPointerUp);
+        renderer.domElement.addEventListener("pointercancel", onPointerUp);
+        renderer.domElement.addEventListener("pointerleave", onPointerLeave);
+        renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
+        renderer.domElement.addEventListener("keydown", onKeyDown);
+        mount.addEventListener("overview-reset", resetView);
+
+        let animationFrame = 0;
+        function animate() {
+          renderer.render(scene, camera);
+          animationFrame = requestAnimationFrame(animate);
+        }
+        animationFrame = requestAnimationFrame(animate);
+
+        cleanup = () => {
+          cancelAnimationFrame(animationFrame);
+          resizeObserver.disconnect();
+          renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+          renderer.domElement.removeEventListener("pointermove", onPointerMove);
+          renderer.domElement.removeEventListener("pointerup", onPointerUp);
+          renderer.domElement.removeEventListener("pointercancel", onPointerUp);
+          renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
+          renderer.domElement.removeEventListener("wheel", onWheel);
+          renderer.domElement.removeEventListener("keydown", onKeyDown);
+          mount.removeEventListener("overview-reset", resetView);
+          disposeScene(scene);
+          renderer.dispose();
+          renderer.domElement.remove();
+        };
+      })
+      .catch(() => {
+        if (!cancelled) setWebglFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
+
+  const dispatchControl = (control: "zoomIn" | "zoomOut" | "reset") => {
+    const mount = mountRef.current;
+    const canvas = mount?.querySelector("canvas");
+    if (control === "reset") {
+      mount?.dispatchEvent(new Event("overview-reset"));
+      return;
+    }
+    if (!canvas) return;
+    canvas.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: control === "zoomIn" ? -220 : 220,
+        cancelable: true,
+      }),
+    );
+  };
+
+  const highlightedRoom = hoveredRoom ? roomById[hoveredRoom] : null;
+
+  return (
+    <div
+      className={`tour-canvas overview-canvas ${dragging ? "is-dragging" : ""}`}
+      ref={mountRef}
+    >
+      {webglFailed && (
+        <OverviewFallback currentRoom={currentRoom} onEnter={onEnter} />
+      )}
+      <div className="canvas-shade overview-shade" />
+      <div className="overview-compass" aria-hidden="true">
+        <span>N</span>
+        <i>↑</i>
+      </div>
+      <div className="viewer-controls overview-viewer-controls" aria-label="鳥瞰視角控制">
+        <button
+          type="button"
+          onClick={() => dispatchControl("zoomIn")}
+          aria-label="放大鳥瞰模型"
+        >
+          ＋
+        </button>
+        <span className="zoom-readout">{zoomDistance}m</span>
+        <button
+          type="button"
+          onClick={() => dispatchControl("zoomOut")}
+          aria-label="縮小鳥瞰模型"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="overview-reset"
+          onClick={() => dispatchControl("reset")}
+          aria-label="重設鳥瞰視角"
+          title="重設視角"
+        >
+          ↺
+        </button>
+      </div>
+      <div className="drag-hint overview-drag-hint">
+        <span className="drag-mark">↔</span>
+        拖曳旋轉 · 滾輪縮放 · 點擊房間進入
+      </div>
+      {highlightedRoom && (
+        <div className="overview-hover-card" aria-live="polite">
+          <span>{highlightedRoom.index}</span>
+          <div>
+            <strong>{highlightedRoom.name}</strong>
+            <small>點擊進入 360° 室內視角</small>
+          </div>
+        </div>
+      )}
+      <div className="overview-legend">
+        <span>
+          <i className="overview-legend-room" />
+          可進入空間
+        </span>
+        <span>
+          <i className="overview-legend-route" />
+          主要動線
+        </span>
+      </div>
     </div>
   );
 }
@@ -1146,6 +1723,7 @@ function FloorPlan({
 
 export default function Home() {
   const [currentRoomId, setCurrentRoomId] = useState<RoomId>("entrance");
+  const [viewMode, setViewMode] = useState<"overview" | "room">("overview");
   const [panelOpen, setPanelOpen] = useState(true);
   const [planOpen, setPlanOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -1155,6 +1733,12 @@ export default function Home() {
 
   const moveTo = useCallback((roomId: RoomId) => {
     setCurrentRoomId(roomId);
+    setViewMode("room");
+    setStarted(true);
+  }, []);
+
+  const openOverview = useCallback(() => {
+    setViewMode("overview");
     setStarted(true);
   }, []);
 
@@ -1183,6 +1767,24 @@ export default function Home() {
             <h1>長者日間護理中心｜現況導覽</h1>
           </div>
         </div>
+        <nav className="mode-switch" aria-label="模型檢視模式">
+          <button
+            type="button"
+            className={viewMode === "overview" ? "is-current" : ""}
+            onClick={openOverview}
+          >
+            <span>◇</span>
+            總覽鳥瞰
+          </button>
+          <button
+            type="button"
+            className={viewMode === "room" ? "is-current" : ""}
+            onClick={() => setViewMode("room")}
+          >
+            <span>◎</span>
+            室內 360°
+          </button>
+        </nav>
         <div className="top-actions">
           <span className="model-badge">
             <i />
@@ -1221,37 +1823,65 @@ export default function Home() {
       </header>
 
       <section className="viewer-stage">
-        <TourCanvas
-          key={currentRoomId}
-          room={room}
-          autoRotate={autoRotate}
-          onMove={moveTo}
-        />
+        {viewMode === "overview" ? (
+          <OverviewCanvas currentRoom={currentRoomId} onEnter={moveTo} />
+        ) : (
+          <TourCanvas
+            key={currentRoomId}
+            room={room}
+            autoRotate={autoRotate}
+            onMove={moveTo}
+          />
+        )}
 
-        <div className="room-card">
-          <div className="room-card-index">
-            <span>{room.index}</span>
-            <small>
-              {progress}/{ROOMS.length}
-            </small>
+        {viewMode === "overview" ? (
+          <div className="room-card overview-card">
+            <div className="room-card-index overview-card-index">
+              <span>3D</span>
+              <small>全層</small>
+            </div>
+            <div className="room-copy">
+              <p>INTERACTIVE OVERVIEW</p>
+              <h2>總覽鳥瞰</h2>
+              <span>9 個互動空間</span>
+              <small>
+                拖曳旋轉模型、滾輪縮放；點擊彩色房間即可進入相應的 360° 室內視角。
+              </small>
+            </div>
           </div>
-          <div className="room-copy">
-            <p>{room.english}</p>
-            <h2>{room.name}</h2>
-            <span>{room.area}</span>
-            <small>{room.description}</small>
+        ) : (
+          <div className="room-card">
+            <div className="room-card-index">
+              <span>{room.index}</span>
+              <small>
+                {progress}/{ROOMS.length}
+              </small>
+            </div>
+            <div className="room-copy">
+              <p>{room.english}</p>
+              <h2>{room.name}</h2>
+              <span>{room.area}</span>
+              <small>{room.description}</small>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="bottom-actions">
-          <button
-            type="button"
-            className={autoRotate ? "is-active" : ""}
-            onClick={() => setAutoRotate((value) => !value)}
-          >
-            <span>↻</span>
-            {autoRotate ? "停止自動旋轉" : "自動旋轉"}
-          </button>
+          {viewMode === "overview" ? (
+            <button type="button" onClick={() => setPanelOpen(true)}>
+              <span>＋</span>
+              選擇空間
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={autoRotate ? "is-active" : ""}
+              onClick={() => setAutoRotate((value) => !value)}
+            >
+              <span>↻</span>
+              {autoRotate ? "停止自動旋轉" : "自動旋轉"}
+            </button>
+          )}
           <button type="button" onClick={() => setPlanOpen(true)}>
             <span>⌗</span>
             查看完整圖則
@@ -1260,13 +1890,13 @@ export default function Home() {
 
         {!started && (
           <div className="start-card">
-            <p>GROUND FLOOR · KAI TAK 4A2</p>
-            <h2>由圖則走進空間</h2>
+            <p>INTERACTIVE MODEL · KAI TAK 4A2</p>
+            <h2>從鳥瞰了解整體空間</h2>
             <span>
-              拖曳畫面環視，點擊橙色熱點或圖則定位點移動。視覺材質參照清水樓環境，不代表現場實景。
+              拖曳旋轉、滾輪縮放，點擊房間進入 360° 室內視角。模型按圖則建立，材質只用作模擬清水樓狀態。
             </span>
             <button type="button" onClick={() => setStarted(true)}>
-              開始導覽
+              開始探索模型
               <b>→</b>
             </button>
           </div>
