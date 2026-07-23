@@ -102,12 +102,66 @@
         filter: drop-shadow(0 50px 55px rgba(0,0,0,.58));
         user-select: none; pointer-events: none;
       }
-      .wall-layer, .column-layer {
+      .wall-layer, .column-layer, .furniture-layer {
         position: absolute;
         z-index: 3;
         inset: 0;
         transform-style: preserve-3d;
         pointer-events: none;
+      }
+      .furniture-layer { z-index: 4; }
+      .plan-furniture {
+        position: absolute;
+        top: var(--y); left: var(--x);
+        width: var(--w); height: var(--d);
+        display: grid; place-items: center;
+        transform: translate(-50%,-50%) translateZ(var(--lift)) rotateZ(var(--r));
+        transform-style: preserve-3d;
+        border: 1px solid rgba(255,255,255,.58);
+        border-radius: 3px;
+        background: var(--furniture-color,#4c8d87);
+        box-shadow: 7px 9px 10px rgba(0,0,0,.3);
+        color: #101516;
+        font-size: clamp(6px,.6vw,9px);
+        font-style: normal;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .plan-furniture::after {
+        content: "";
+        position: absolute;
+        inset: 100% 0 auto;
+        height: 8px;
+        transform-origin: 50% 0;
+        transform: rotateX(-90deg);
+        background: color-mix(in srgb, var(--furniture-color,#4c8d87), #111 28%);
+      }
+      .plan-furniture.chair { border-radius: 42% 42% 6px 6px; --furniture-color:#4c8d87; }
+      .plan-furniture.table { --furniture-color:#b98052; }
+      .plan-furniture.cabinet { --furniture-color:#718a91; }
+      .plan-furniture.bed { --furniture-color:#f1eee4; color:#38515b; }
+      .plan-furniture.machine { border-radius: 50%; --furniture-color:#e9ece8; color:#243034; }
+      .plan-furniture.training { --furniture-color:#c99547; }
+      .plan-furniture.sensory {
+        border-radius: 50%;
+        --furniture-color:#a373d6;
+        box-shadow: 0 0 16px rgba(166,108,226,.9);
+      }
+      .plan-furniture.sofa { border-radius: 8px; --furniture-color:#4c8d87; }
+      .plan-furniture.screen { --furniture-color:#263e48; color:#8ed7ef; }
+      .plan-furniture.toilet {
+        border-radius: 48% 48% 42% 42%;
+        --furniture-color:#f5f2e9;
+        color:#38515b;
+      }
+      .plan-furniture.toilet::before {
+        content: "";
+        position: absolute;
+        right: 12%; bottom: 78%; left: 12%;
+        height: 55%;
+        border: 1px solid rgba(45,55,57,.35);
+        border-radius: 2px;
+        background: #f5f2e9;
       }
       .plan-wall {
         --wall-h: 58px;
@@ -261,6 +315,34 @@
       }
       .column.two { right: 20%; left: auto; }
 
+      .functional-board {
+        position: absolute;
+        z-index: 8;
+        top: 104px;
+        right: 24px;
+        width: min(310px, calc(100vw - 48px));
+        padding: 15px;
+        border: 1px solid rgba(255,255,255,.18);
+        border-radius: 14px;
+        background: rgba(16,20,21,.82);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 18px 45px rgba(0,0,0,.3);
+      }
+      .functional-board p {
+        margin: 0 0 9px;
+        color: var(--accent);
+        font-size: 9px;
+        letter-spacing: .15em;
+      }
+      .functional-board div { display: flex; flex-wrap: wrap; gap: 6px; }
+      .functional-board span {
+        padding: 6px 8px;
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 999px;
+        background: rgba(255,255,255,.06);
+        font-size: 9px;
+      }
+
       .portal-row {
         position: absolute; z-index: 7; right: 0; bottom: 31%; left: 0;
         display: flex; justify-content: center; gap: 10px; padding: 0 80px;
@@ -368,6 +450,7 @@
         .portal-row { justify-content: flex-start; overflow-x: auto; padding: 0 50px; }
         .portal-row button { min-width: 126px; flex: 0 0 auto; }
         .room-sign { width: 330px; }
+        .functional-board { top: 112px; right: 12px; width: min(285px,calc(100vw - 24px)); }
         .start-box { padding: 24px; } .start-box h2 { font-size: 30px; }
       }
 
@@ -399,6 +482,7 @@
             <img src="../public/kai-tak-premises-plan.svg" alt="按照PDF圖則外框、牆線及柱位重建的啟德4A2鳥瞰圖" draggable="false" />
             <div class="wall-layer" id="wallLayer" aria-hidden="true"></div>
             <div class="column-layer" id="columnLayer" aria-hidden="true"></div>
+            <div class="furniture-layer" id="furnitureLayer" aria-label="按房間用途配置的家具及設備"></div>
             <div id="markers"></div>
           </div>
           <div class="compass">N<b>↑</b></div>
@@ -414,6 +498,10 @@
             <div class="floor"></div><div class="ceiling"></div>
           </div>
           <i class="column" id="columnOne"></i><i class="column two" id="columnTwo"></i>
+          <aside class="functional-board">
+            <p>FUNCTIONAL FURNITURE</p>
+            <div id="functionalFurniture"></div>
+          </aside>
           <div class="hint"><b>↔</b>拖曳觀看 360° · 滾輪縮放</div>
           <div class="portal-row" id="portals"></div>
         </div>
@@ -424,7 +512,7 @@
             <p id="infoEnglish">INTERACTIVE OVERVIEW</p>
             <h2 id="infoName">總覽鳥瞰</h2>
             <b id="infoArea">9 個互動空間</b>
-            <small id="infoDescription">外框、斜邊、凹位、主要牆線及柱位按照圖則重建；點擊房間標籤進入室內視角。</small>
+            <small id="infoDescription">外框、斜邊、凹位、主要牆線及柱位按照圖則重建，並按房間用途加入示意家具及設備。</small>
           </div>
         </article>
 
@@ -447,7 +535,7 @@
         <div class="start-box">
           <p>INTERACTIVE MODEL · KAI TAK 4A2</p>
           <h2>從鳥瞰了解整體空間</h2>
-          <span>總覽已按照PDF圖則的不規則線條及形狀重建。拖曳旋轉、滾輪縮放，點擊房間進入360°室內視角。</span>
+          <span>總覽已按照PDF圖則的不規則線條及形狀重建，並按每區用途配置示意家具及設備。拖曳旋轉、滾輪縮放，點擊房間進入360°室內視角。</span>
           <button id="startButton">開始探索模型　→</button>
         </div>
       </div>
@@ -507,6 +595,40 @@
         [327,251],[541,251],[739,251],[1042,251],[1230,251],[1509,251],
         [589,407],[735,407],[1042,407],[1235,407],[1509,407]
       ];
+      const functionalFurniture = {
+        entrance:["迎賓標示","酒精搓手液","雨傘架","輪椅停泊位","等候扶手椅"],
+        reception:["L形接待櫃台","電腦及電話","職員座椅","訪客登記平板","等候椅"],
+        office:["辦公桌椅","電腦及打印機","鎖櫃","洗衣機及乾衣機","摺衣工作枱","布草櫃"],
+        clinical:["診症床","護士工作枱","藥物鎖櫃","生命表徵車","洗手盆","面談圓枱椅"],
+        training:["平衡槓","物理治療床","復康單車","訓練梯級","軟墊","助行器停泊位"],
+        changing:["座廁","無障礙座廁及扶手","洗手盆及鏡","更衣櫃","更衣長椅","緊急召喚"],
+        multisensory:["泡泡管","光纖燈","觸感牆","軟墊","豆袋椅","感官燈枱"],
+        dining:["活動餐枱椅","配餐櫃台","保溫餐車","雪櫃","微波爐","洗手盆及水機"],
+        common:["梳化座椅組","茶几","電視／投影","活動枱","麻雀／紙牌枱","書報架","運動角"]
+      };
+      const overviewFurniture = [
+        ["cabinet",68,430,20,18,0,"消毒"],["chair",82,457,18,21,90,"椅"],["chair",82,478,18,21,90,"椅"],
+        ["table",205,440,94,19,0,"接待"],["table",248,456,19,46,0,""],["chair",190,465,18,21,180,"椅"],
+        ["chair",278,453,18,21,-90,"椅"],["chair",305,453,18,21,-90,"椅"],
+        ["machine",62,330,29,29,0,"洗"],["machine",105,330,29,29,0,"乾"],["table",84,378,66,30,0,"工作枱"],
+        ["cabinet",126,372,15,58,0,"布草"],["table",213,344,45,24,0,"辦公"],["table",286,344,45,24,0,"辦公"],
+        ["table",213,392,45,24,0,"辦公"],["table",286,392,45,24,0,"辦公"],
+        ["bed",185,115,34,70,0,"診症床"],["table",210,190,42,24,0,"護士"],["table",292,210,42,42,0,"面談"],
+        ["cabinet",385,205,18,68,0,"儲物"],["training",455,111,40,93,0,"平衡槓"],
+        ["bed",493,183,29,66,0,"治療床"],["bed",540,183,29,66,0,"治療床"],
+        ["machine",416,213,26,33,0,"單車"],["machine",458,213,26,33,0,"踏步"],
+        ["toilet",364,338,18,29,180,"廁"],["toilet",410,338,18,29,180,"廁"],
+        ["toilet",456,338,18,29,180,"廁"],["toilet",502,338,18,29,180,"廁"],
+        ["toilet",382,468,18,29,0,"廁"],["toilet",430,468,18,29,0,"廁"],["toilet",478,468,18,29,0,"廁"],
+        ["machine",350,392,34,17,0,"盆"],["machine",432,392,34,17,0,"盆"],
+        ["cabinet",302,360,18,78,0,"更衣櫃"],["sensory",568,445,21,21,0,"光"],["sensory",608,466,56,36,0,"軟墊"],
+        ["table",720,357,62,38,0,"餐枱"],["table",840,357,62,38,0,"餐枱"],["table",950,357,62,38,0,"餐枱"],
+        ["table",720,454,62,38,0,"餐枱"],["table",840,454,62,38,0,"餐枱"],["table",950,454,62,38,0,"餐枱"],
+        ["cabinet",631,337,76,20,0,"配餐"],["sofa",1125,332,86,28,0,"梳化"],["sofa",1230,332,86,28,180,"梳化"],
+        ["table",1178,333,45,32,0,"茶几"],["sofa",1125,428,86,28,0,"梳化"],["sofa",1230,428,86,28,180,"梳化"],
+        ["screen",1062,297,70,12,0,"電視"],["table",1400,342,62,38,0,"活動枱"],["table",1400,438,62,38,0,"紙牌枱"],
+        ["cabinet",1542,345,18,102,0,"書報"]
+      ];
 
       function addPlanWall(start,end,interior = false) {
         const dx = end[0] - start[0];
@@ -535,6 +657,20 @@
         column.style.setProperty("--x", `${x / planWidth * 100}%`);
         column.style.setProperty("--y", `${y / planHeight * 100}%`);
         document.querySelector("#columnLayer").append(column);
+      });
+      overviewFurniture.forEach(([type,x,y,w,d,rotation,label]) => {
+        const item = document.createElement("i");
+        item.className = `plan-furniture ${type}`;
+        item.style.cssText = [
+          `--x:${x / planWidth * 100}%`,
+          `--y:${y / planHeight * 100}%`,
+          `--w:${w / planWidth * 100}%`,
+          `--d:${d / planHeight * 100}%`,
+          `--r:${rotation}deg`,
+          `--lift:${type === "cabinet" || type === "sensory" ? 34 : 18}px`
+        ].join(";");
+        item.textContent = label;
+        document.querySelector("#furnitureLayer").append(item);
       });
 
       rooms.forEach(room => {
@@ -582,6 +718,8 @@
         });
         document.querySelector("#columnOne").hidden = !current.columns;
         document.querySelector("#columnTwo").hidden = !current.columns;
+        document.querySelector("#functionalFurniture").innerHTML =
+          functionalFurniture[current.id].map(item => `<span>${item}</span>`).join("");
         document.querySelector("#drawer").classList.remove("open");
         setMode("room");
       }
@@ -591,7 +729,7 @@
         document.querySelector("#infoEnglish").textContent = "INTERACTIVE OVERVIEW";
         document.querySelector("#infoName").textContent = "總覽鳥瞰";
         document.querySelector("#infoArea").textContent = "9 個互動空間";
-        document.querySelector("#infoDescription").textContent = "外框、斜邊、凹位、主要牆線及柱位按照圖則重建；點擊房間標籤進入室內視角。";
+        document.querySelector("#infoDescription").textContent = "外框、斜邊、凹位、主要牆線及柱位按照圖則重建，並按房間用途加入示意家具及設備。";
       }
       function showRoomInfo() {
         document.querySelector("#infoIndex").textContent = current.index;
@@ -669,6 +807,8 @@
         if (mode === "overview") { overviewRx = 43; overviewRz = -4; overviewScale = 1; applyOverview(); }
         else { roomYaw = 0; roomPitch = 0; roomZoom = 1; applyRoom(); }
       });
+      document.querySelector("#functionalFurniture").innerHTML =
+        functionalFurniture.entrance.map(item => `<span>${item}</span>`).join("");
       setMode("overview");
     </script>
   </body>
