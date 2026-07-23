@@ -93,22 +93,95 @@
         aspect-ratio: 1599 / 571;
         transform: translate(-50%, -49%) rotateX(var(--rx)) rotateZ(var(--rz)) scale(var(--scale));
         transform-style: preserve-3d;
-        filter: drop-shadow(0 50px 55px rgba(0,0,0,.58));
         transition: transform .08s linear;
       }
-      .overview-model img { width: 100%; height: 100%; display: block; user-select: none; pointer-events: none; }
+      .overview-model > img {
+        position: relative;
+        z-index: 1;
+        width: 100%; height: 100%; display: block;
+        filter: drop-shadow(0 50px 55px rgba(0,0,0,.58));
+        user-select: none; pointer-events: none;
+      }
+      .wall-layer, .column-layer {
+        position: absolute;
+        z-index: 3;
+        inset: 0;
+        transform-style: preserve-3d;
+        pointer-events: none;
+      }
+      .plan-wall {
+        --wall-h: 58px;
+        position: absolute;
+        top: calc(var(--y) - var(--wall-h));
+        left: var(--x);
+        width: var(--length);
+        height: var(--wall-h);
+        transform-origin: 0 100%;
+        transform: rotateZ(var(--angle)) rotateX(-90deg);
+        backface-visibility: visible;
+        border: 2px solid rgba(55,59,59,.58);
+        border-bottom: 4px solid rgba(32,36,37,.78);
+        background:
+          linear-gradient(100deg,rgba(255,255,255,.22),transparent 26% 72%,rgba(0,0,0,.12)),
+          linear-gradient(to top,#8f918d,#ddd9ce);
+        box-shadow: 0 11px 18px rgba(0,0,0,.28);
+      }
+      .plan-wall::after {
+        content: "";
+        position: absolute;
+        top: -5px; right: -2px; left: -2px;
+        height: 7px;
+        border: 1px solid rgba(255,255,255,.45);
+        background: #e9e4d8;
+        transform-origin: 50% 100%;
+        transform: rotateX(90deg);
+      }
+      .plan-wall.interior {
+        --wall-h: 38px;
+        border-color: rgba(52,56,57,.46);
+        background:
+          linear-gradient(100deg,rgba(255,255,255,.16),transparent 30% 72%,rgba(0,0,0,.12)),
+          linear-gradient(to top,#737978,#b9b9b2);
+      }
+      .plan-column {
+        position: absolute;
+        top: var(--y); left: var(--x);
+        width: 10px; height: 10px;
+        transform: translate(-50%,-50%) translateZ(25px);
+        border: 1px solid rgba(255,255,255,.34);
+        background: #454a49;
+        box-shadow: 10px 12px 13px rgba(0,0,0,.28);
+      }
+      .plan-column::before, .plan-column::after {
+        content: "";
+        position: absolute;
+        background: #656b69;
+      }
+      .plan-column::before {
+        right: 100%; bottom: 0;
+        width: 25px; height: 10px;
+        transform-origin: 100% 100%;
+        transform: rotateY(90deg);
+      }
+      .plan-column::after {
+        top: 100%; left: 0;
+        width: 10px; height: 25px;
+        transform-origin: 0 0;
+        transform: rotateX(90deg);
+      }
       .room-marker {
         position: absolute; top: var(--y); left: var(--x);
         display: flex; align-items: center; gap: 6px;
-        min-height: 28px; transform: translate(-50%,-50%) translateZ(22px);
+        z-index: 6;
+        min-height: 28px; transform: translate(-50%,-50%) translateZ(64px);
         padding: 4px 9px 4px 5px; border: 1px solid var(--color);
         border-radius: 999px; background: rgba(15,19,20,.94);
         box-shadow: 0 8px 20px rgba(0,0,0,.42);
         white-space: nowrap; cursor: pointer;
       }
       .room-marker:hover, .room-marker.current {
-        z-index: 2; border-color: #fff;
-        transform: translate(-50%,-50%) translateZ(36px) scale(1.05);
+        z-index: 8; border-color: #fff;
+        transform: translate(-50%,-50%) translateZ(78px) scale(1.05);
       }
       .room-marker span {
         width: 21px; height: 21px; display: grid; place-items: center;
@@ -324,6 +397,8 @@
         <div id="overviewView" class="view overview-view active">
           <div class="overview-model" id="overviewModel">
             <img src="../public/kai-tak-premises-plan.svg" alt="按照PDF圖則外框、牆線及柱位重建的啟德4A2鳥瞰圖" draggable="false" />
+            <div class="wall-layer" id="wallLayer" aria-hidden="true"></div>
+            <div class="column-layer" id="columnLayer" aria-hidden="true"></div>
             <div id="markers"></div>
           </div>
           <div class="compass">N<b>↑</b></div>
@@ -395,6 +470,72 @@
       const roomList = document.querySelector("#roomList");
       let current = rooms[0];
       let mode = "overview";
+
+      const planWidth = 1599;
+      const planHeight = 571;
+      const premisesOutline = [
+        [439,36.5],[572,36.5],[578.5,42],[579,248.5],[1229,248.5],
+        [1236,259.5],[1246,248.5],[1502,248.5],[1509,259.5],[1518,248.5],
+        [1581,248.5],[1584.5,488],[1579,492.5],[1372,491.5],[1367.5,487],
+        [1367.5,446],[1348.5,440],[1348.5,371],[1308,370.5],[1307.5,431],
+        [1303,437.5],[1020,440.5],[1003.5,457],[1003.5,508],[999,512.5],
+        [958,512.5],[953,531.5],[650,531.5],[644.5,524],[644,488.5],
+        [613.5,489],[613.5,527],[609,531.5],[570,532.5],[531,531.5],
+        [524,501.5],[481,501.5],[476,511.5],[363,512.5],[330,511.5],
+        [326,488.5],[59,488.5],[53.5,484],[52.5,413],[30.5,409],
+        [29.5,259],[35,252.5],[82.5,248],[82.5,201],[35,200.5],
+        [29.5,189],[35.5,165],[74.5,94],[89,91.5],[100,72.5],
+        [133,84.5],[154,67.5],[432,67.5],[433.5,42]
+      ];
+      const interiorWalls = [
+        [[83,248],[138,248],[138,159],[235,159],[235,257],[360,257],[360,159]],
+        [[138,258],[138,410],[59,410]],
+        [[169,310],[335,310],[335,486]],
+        [[169,310],[169,418]],
+        [[274,310],[534,310],[534,500],[363,500],[363,486],[335,486],[335,418],[274,418],[274,310]],
+        [[335,352],[534,352]],
+        [[335,420],[534,420]],
+        [[590,400],[530,400],[530,486]],
+        [[670,400],[644,400],[644,488]],
+        [[234,257],[418,257]],
+        [[468,257],[574,257]],
+        [[590,310],[637,310]],
+        [[675,310],[874,310]],
+        [[910,310],[1015,310],[1015,439]]
+      ];
+      const structuralColumns = [
+        [327,251],[541,251],[739,251],[1042,251],[1230,251],[1509,251],
+        [589,407],[735,407],[1042,407],[1235,407],[1509,407]
+      ];
+
+      function addPlanWall(start,end,interior = false) {
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        if (Math.hypot(dx,dy) < 2) return;
+        const wall = document.createElement("i");
+        wall.className = `plan-wall${interior ? " interior" : ""}`;
+        wall.style.setProperty("--x", `${start[0] / planWidth * 100}%`);
+        wall.style.setProperty("--y", `${start[1] / planHeight * 100}%`);
+        wall.style.setProperty("--length", `${Math.hypot(dx,dy) / planWidth * 100}%`);
+        wall.style.setProperty("--angle", `${Math.atan2(dy,dx) * 180 / Math.PI}deg`);
+        document.querySelector("#wallLayer").append(wall);
+      }
+
+      premisesOutline.forEach((point,index) => {
+        addPlanWall(point,premisesOutline[(index + 1) % premisesOutline.length]);
+      });
+      interiorWalls.forEach(line => {
+        for (let index = 0; index < line.length - 1; index += 1) {
+          addPlanWall(line[index],line[index + 1],true);
+        }
+      });
+      structuralColumns.forEach(([x,y]) => {
+        const column = document.createElement("i");
+        column.className = "plan-column";
+        column.style.setProperty("--x", `${x / planWidth * 100}%`);
+        column.style.setProperty("--y", `${y / planHeight * 100}%`);
+        document.querySelector("#columnLayer").append(column);
+      });
 
       rooms.forEach(room => {
         const marker = document.createElement("button");
