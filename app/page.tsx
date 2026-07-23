@@ -8,7 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import * as THREE from "three";
+import type * as ThreeTypes from "three";
+
+type ThreeModule = typeof import("three");
+
+let THREE: ThreeModule;
 
 type RoomId =
   | "entrance"
@@ -339,18 +343,18 @@ function roomSignTexture(room: Room) {
   return texture;
 }
 
-function disposeScene(scene: THREE.Scene) {
+function disposeScene(scene: ThreeTypes.Scene) {
   scene.traverse((object) => {
-    const mesh = object as THREE.Mesh;
+    const mesh = object as ThreeTypes.Mesh;
     mesh.geometry?.dispose?.();
     if (Array.isArray(mesh.material)) {
       mesh.material.forEach((material) => {
-        const map = (material as THREE.MeshStandardMaterial).map;
+        const map = (material as ThreeTypes.MeshStandardMaterial).map;
         map?.dispose();
         material.dispose();
       });
     } else if (mesh.material) {
-      const material = mesh.material as THREE.MeshStandardMaterial;
+      const material = mesh.material as ThreeTypes.MeshStandardMaterial;
       material.map?.dispose();
       material.dispose();
     }
@@ -510,8 +514,16 @@ function TourCanvas({
   }, [autoRotate]);
 
   useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
+
+    void import("three")
+      .then((threeModule) => {
+        if (cancelled) return;
+        THREE = threeModule;
+
+        const mount = mountRef.current;
+        if (!mount) return;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#171a1b");
@@ -527,7 +539,7 @@ function TourCanvas({
       return;
     }
 
-    let renderer: THREE.WebGLRenderer;
+    let renderer: ThreeTypes.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
         antialias: true,
@@ -601,7 +613,7 @@ function TourCanvas({
       z: number,
       rotX: number,
       rotY: number,
-      material: THREE.Material,
+      material: ThreeTypes.Material,
     ) {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(planeWidth, planeHeight),
@@ -686,7 +698,11 @@ function TourCanvas({
     duct.castShadow = true;
     scene.add(duct);
 
-    function addPipe(z: number, material: THREE.Material, radius: number) {
+    function addPipe(
+      z: number,
+      material: ThreeTypes.Material,
+      radius: number,
+    ) {
       const pipe = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius, width * 0.86, 12),
         material,
@@ -805,7 +821,7 @@ function TourCanvas({
       }
     }
 
-    const hotspotObjects: THREE.Sprite[] = [];
+    const hotspotObjects: ThreeTypes.Sprite[] = [];
 
     function doorTransform(link: RoomLink) {
       const alongX = link.offset * width;
@@ -1008,7 +1024,7 @@ function TourCanvas({
     }
     animationFrame = requestAnimationFrame(animate);
 
-    return () => {
+    cleanup = () => {
       cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
@@ -1020,6 +1036,15 @@ function TourCanvas({
       disposeScene(scene);
       renderer.dispose();
       renderer.domElement.remove();
+    };
+      })
+      .catch(() => {
+        if (!cancelled) setWebglFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+      cleanup?.();
     };
   }, [room]);
 
